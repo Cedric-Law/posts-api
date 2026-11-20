@@ -9,6 +9,13 @@ let nextId = Math.max(0, ...posts.map((p) => p.id)) + 1;
 const FIELDS = ['postId', 'name', 'email', 'body'];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+
+function findIndexById(rawId) {
+  const id = Number(rawId);
+  return posts.findIndex((p) => p.id === id);
+}
+
+
 function isNonEmptyString(value, max) {
   return typeof value === 'string' && value.length >= 1 && value.length <= max;
 }
@@ -94,16 +101,13 @@ router.get('/posts', (ctx) => {
 });
 
 router.get('/posts/:id', (ctx) => {
-  const id = Number(ctx.params.id);
-  const post = posts.find((p) => p.id === id);
-
-  if (!post) {
+  const index = findIndexById(ctx.params.id);
+  if (index === -1) {
     ctx.status = 404;
     ctx.body = { error: 'Post introuvable' };
     return;
   }
-
-  ctx.body = post;
+  ctx.body = posts[index];
 });
 
 router.post('/posts', (ctx) => {
@@ -131,17 +135,71 @@ router.post('/posts', (ctx) => {
 });
 
 router.delete('/posts/:id', (ctx) => {
-  const id = Number(ctx.params.id);
-  const index = posts.findIndex((p) => p.id === id);
+  const index = findIndexById(ctx.params.id);
+  if (index === -1) {
+    ctx.status = 404;
+    ctx.body = { error: 'Post introuvable' };
+    return;
+  }
+  posts.splice(index, 1);
+  ctx.status = 204;
+});
 
+
+router.put('/posts/:id', (ctx) => {
+  const index = findIndexById(ctx.params.id);
   if (index === -1) {
     ctx.status = 404;
     ctx.body = { error: 'Post introuvable' };
     return;
   }
 
-  posts.splice(index, 1);
-  ctx.status = 204;
+  const data = ctx.request.body;
+  const error = validateComplete(data);
+  if (error) {
+    ctx.status = 400;
+    ctx.body = { error };
+    return;
+  }
+
+  const post = {
+    postId: data.postId,
+    id: posts[index].id,
+    name: data.name,
+    email: data.email,
+    body: data.body,
+  };
+  posts[index] = post;
+
+  ctx.body = post;
+});
+
+
+router.patch('/posts/:id', (ctx) => {
+  const index = findIndexById(ctx.params.id);
+  if (index === -1) {
+    ctx.status = 404;
+    ctx.body = { error: 'Post introuvable' };
+    return;
+  }
+
+  const data = ctx.request.body;
+  const error = validateFields(data);
+  if (error) {
+    ctx.status = 400;
+    ctx.body = { error };
+    return;
+  }
+
+  if (Object.keys(data).length === 0) {
+    ctx.status = 400;
+    ctx.body = { error: 'Le corps ne doit pas être vide' };
+    return;
+  }
+
+  Object.assign(posts[index], data);
+
+  ctx.body = posts[index];
 });
 
 

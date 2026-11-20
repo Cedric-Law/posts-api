@@ -8,6 +8,25 @@ const posts = JSON.parse(fs.readFileSync('post.seed.json', 'utf-8'));
 const app = new Koa();
 const router = new Router();
 
+app.use(async (ctx, next) => {
+  try {
+    await next();
+
+    if (ctx.status === 404 && ctx.body === undefined) {
+      ctx.status = 404;
+      ctx.body = { error: 'Route introuvable' };
+    }
+  } catch (err) {
+    const status = (err.status >= 400 && err.status < 500) ? err.status : 500;
+
+    ctx.status = status;
+    ctx.body = {
+      error: status === 500 ? 'Erreur interne du serveur' : err.message,
+    };
+  }
+});
+
+app.use(bodyParser());
 
 router.get('/posts', (ctx) => {
   const { postId } = ctx.query;
@@ -40,8 +59,6 @@ router.get('/posts/:id', (ctx) => {
   ctx.body = post;
 });
 
-
-app.use(bodyParser());
 app.use(router.routes());
 app.use(router.allowedMethods());
 

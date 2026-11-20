@@ -3,25 +3,18 @@ import Router from '@koa/router';
 import bodyParser from 'koa-bodyparser';
 import fs from 'node:fs';
 
-const posts = JSON.parse(fs.readFileSync('post.seed.json', 'utf-8')); 
+const posts = JSON.parse(fs.readFileSync('post.seed.json', 'utf-8'));
 let nextId = Math.max(0, ...posts.map((p) => p.id)) + 1;
 
 const FIELDS = ['postId', 'name', 'email', 'body'];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-
-function findIndexById(rawId) {
-  const id = Number(rawId);
-  return posts.findIndex((p) => p.id === id);
-}
-
 
 function isNonEmptyString(value, max) {
   return typeof value === 'string' && value.length >= 1 && value.length <= max;
 }
 
 // Renvoie un message d'erreur, ou null si tout est valide.
-// Ne vérifie que les champs présents dans `data` : le "requis" est géré par l'appelant.
+// Ne vérifie que les champs présents : le "requis" est géré par validateComplete.
 function validateFields(data) {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) {
     return 'Le corps doit être un objet JSON';
@@ -59,6 +52,21 @@ function validateComplete(data) {
   return null;
 }
 
+function findIndexById(rawId) {
+  const id = Number(rawId);
+  return posts.findIndex((p) => p.id === id);
+}
+
+function notFound(ctx) {
+  ctx.status = 404;
+  ctx.body = { error: 'Post introuvable' };
+}
+
+function badRequest(ctx, error) {
+  ctx.status = 400;
+  ctx.body = { error };
+}
+
 const app = new Koa();
 const router = new Router();
 
@@ -66,9 +74,14 @@ app.use(async (ctx, next) => {
   try {
     await next();
 
-    if (ctx.status === 404 && ctx.body === undefined) {
-      ctx.status = 404;
-      ctx.body = { error: 'Route introuvable' };
+    if (ctx.status >= 400 && typeof ctx.body !== 'object') {
+      const messages = {
+        404: 'Route introuvable',
+        405: 'Méthode non autorisée',
+      };
+      const status = ctx.status;
+      ctx.body = { error: messages[status] ?? 'Requête invalide' };
+      ctx.status = status;
     }
   } catch (err) {
     const status = (err.status >= 400 && err.status < 500) ? err.status : 500;
@@ -92,9 +105,7 @@ router.get('/posts', (ctx) => {
 
   const n = Number(postId);
   if (!Number.isInteger(n) || n < 1) {
-    ctx.status = 400;
-    ctx.body = { error: 'postId doit être un entier >= 1' };
-    return;
+    return badRequest(ctx, 'postId doit être un entier >= 1');
   }
 
   ctx.body = posts.filter((post) => post.postId === n);
@@ -102,11 +113,8 @@ router.get('/posts', (ctx) => {
 
 router.get('/posts/:id', (ctx) => {
   const index = findIndexById(ctx.params.id);
-  if (index === -1) {
-    ctx.status = 404;
-    ctx.body = { error: 'Post introuvable' };
-    return;
-  }
+  if (index === -1) return notFound(ctx);
+
   ctx.body = posts[index];
 });
 
@@ -114,11 +122,7 @@ router.post('/posts', (ctx) => {
   const data = ctx.request.body;
 
   const error = validateComplete(data);
-  if (error) {
-    ctx.status = 400;
-    ctx.body = { error };
-    return;
-  }
+  if (error) return badRequest(ctx, error);
 
   const post = {
     postId: data.postId,
@@ -134,67 +138,35 @@ router.post('/posts', (ctx) => {
   ctx.body = post;
 });
 
-router.delete('/posts/:id', (ctx) => {
-  const index = findIndexById(ctx.params.id);
-  if (index === -1) {
-    ctx.status = 404;
-    ctx.body = { error: 'Post introuvable' };
-    return;
-  }
-  posts.splice(index, 1);
-  ctx.status = 204;
-});
-
-
 router.put('/posts/:id', (ctx) => {
   const index = findIndexById(ctx.params.id);
-  if (index === -1) {
-    ctx.status = 404;
-    ctx.body = { error: 'Post introuvable' };
-    return;
-  }
+  if (index === -1) return notFound(ctx);
 
   const data = ctx.request.body;
   const error = validateComplete(data);
-  if (error) {
-    ctx.status = 400;
-    ctx.body = { error };
-    return;
-  }
+  if (error) return badRequest(ctx, error);
 
-  const post = {
+  posts[index] = {
     postId: data.postId,
     id: posts[index].id,
     name: data.name,
     email: data.email,
     body: data.body,
   };
-  posts[index] = post;
 
-  ctx.body = post;
+  ctx.body = posts[index];
 });
-
 
 router.patch('/posts/:id', (ctx) => {
   const index = findIndexById(ctx.params.id);
-  if (index === -1) {
-    ctx.status = 404;
-    ctx.body = { error: 'Post introuvable' };
-    return;
-  }
+  if (index === -1) return notFound(ctx);
 
   const data = ctx.request.body;
   const error = validateFields(data);
-  if (error) {
-    ctx.status = 400;
-    ctx.body = { error };
-    return;
-  }
+  if (error) return badRequest(ctx, error);
 
   if (Object.keys(data).length === 0) {
-    ctx.status = 400;
-    ctx.body = { error: 'Le corps ne doit pas être vide' };
-    return;
+    return badRequest(ctx, 'Le corps ne doit pas être vide');
   }
 
   Object.assign(posts[index], data);
@@ -202,7 +174,13 @@ router.patch('/posts/:id', (ctx) => {
   ctx.body = posts[index];
 });
 
+router.delete('/posts/:id', (ctx) => {
+  const index = findIndexById(ctx.params.id);
+  if (index === -1) return notFound(ctx);
 
+  posts.splice(index, 1);
+  ctx.status = 204;
+});
 
 app.use(router.routes());
 app.use(router.allowedMethods());

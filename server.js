@@ -3,7 +3,7 @@ import Router from '@koa/router';
 import bodyParser from 'koa-bodyparser';
 import fs from 'node:fs';
 
-const posts = JSON.parse(fs.readFileSync('postno.seed.json', 'utf-8')); 
+const posts = JSON.parse(fs.readFileSync('post.seed.json', 'utf-8')); 
 let nextId = Math.max(0, ...posts.map((p) => p.id)) + 1;
 
 const FIELDS = ['postId', 'name', 'email', 'body'];
@@ -129,6 +129,22 @@ router.post('/posts', (ctx) => {
   ctx.set('Location', `/posts/${post.id}`);
   ctx.body = post;
 });
+
+router.delete('/posts/:id', (ctx) => {
+  const id = Number(ctx.params.id);
+  const index = posts.findIndex((p) => p.id === id);
+
+  if (index === -1) {
+    ctx.status = 404;
+    ctx.body = { error: 'Post introuvable' };
+    return;
+  }
+
+  posts.splice(index, 1);
+  ctx.status = 204;
+});
+
+
 
 app.use(router.routes());
 app.use(router.allowedMethods());

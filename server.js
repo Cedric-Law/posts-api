@@ -3,7 +3,7 @@ import Router from '@koa/router';
 import bodyParser from 'koa-bodyparser';
 import fs from 'node:fs';
 
-const posts = JSON.parse(fs.readFileSync('post.seed.json', 'utf-8'));
+const posts = JSON.parse(fs.readFileSync('postno.seed.json', 'utf-8')); 
 let nextId = Math.max(0, ...posts.map((p) => p.id)) + 1;
 
 const FIELDS = ['postId', 'name', 'email', 'body'];
